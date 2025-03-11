@@ -1,13 +1,6 @@
-import 'package:client/screens/calendar/calendar.dart';
 import 'package:client/screens/calendar/screens/main_navigation_page.dart';
 import 'package:client/screens/reading_game_screen.dart';
-import 'package:client/seriveces.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'dart:async';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:intl/date_symbol_data_local.dart';
 
 void main() async{

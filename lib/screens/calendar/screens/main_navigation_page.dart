@@ -30,12 +30,21 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
   // Список элементов расписания
   List<ScheduleItem> _scheduleItems = [];
 
+  // Контроллер для прокрутки боковой панели
+  final ScrollController _sidebarScrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
 
     // Инициализируем данные при старте
     _initData();
+  }
+
+  @override
+  void dispose() {
+    _sidebarScrollController.dispose();
+    super.dispose();
   }
 
   // Метод для инициализации тестовых данных
@@ -156,7 +165,27 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
       );
       // Автоматически переключаемся на новый раздел
       _selectedIndex = _sections.length - 1;
+      
+      // Прокручиваем к новому разделу после добавления
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToSelectedSection();
+      });
     });
+  }
+
+  // Метод для прокрутки к выбранному разделу
+  void _scrollToSelectedSection() {
+    if (_selectedIndex < _sections.length) {
+      // Расчетная позиция для прокрутки (высота кнопки + отступ) × индекс
+      final double position = (_selectedIndex * (42.0 + 16.0));
+      
+      // Прокручиваем до нужной позиции с анимацией
+      _sidebarScrollController.animateTo(
+        position,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
   }
 
   // Метод для добавления задачи в раздел
@@ -294,21 +323,23 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
   Widget _buildSidebar() {
     return Container(
       width: 70,
-      color: const Color(0xFF1C313A),
+      color: const Color(0xff1B434D),
       child: Column(
         children: [
-          const SizedBox(height: 86),
+          const SizedBox(height: 50),
           IconButton(
             icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
             onPressed: () {},
           ),
-          const Spacer(flex: 1),
-          // Динамически создаем кнопки для каждого раздела
-          ..._buildSectionButtons(),
-          const Spacer(flex: 2),
+          const SizedBox(height: 20),
+          // Основная прокручиваемая область с кнопками разделов
+          Expanded(
+            child: _buildScrollableSectionButtons(),
+          ),
+          const SizedBox(height: 20),
           // Кнопка добавления раздела
           _buildAddButton(),
-          const Spacer(flex: 2),
+          const SizedBox(height: 20),
           // Кнопка календаря
           _buildCalendarButton(),
           Container(
@@ -325,22 +356,23 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
     );
   }
 
-  // Динамически создаем кнопки для всех разделов
-  List<Widget> _buildSectionButtons() {
-    List<Widget> buttons = [];
-
-    for (int i = 0; i < _sections.length; i++) {
-      buttons.add(
-        _buildSidebarButton(_sections[i].letter, _sections[i].color, i),
-      );
-
-      // Добавляем разделитель между кнопками
-      if (i < _sections.length - 1) {
-        buttons.add(const SizedBox(height: 16));
-      }
-    }
-
-    return buttons;
+  // Создаем прокручиваемый список кнопок разделов
+  Widget _buildScrollableSectionButtons() {
+    return Scrollbar(
+      controller: _sidebarScrollController,
+      thumbVisibility: true,
+      child: ListView.builder(
+        controller: _sidebarScrollController,
+        itemCount: _sections.length,
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemBuilder: (context, index) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16, left: 14, right: 14),
+            child: _buildSidebarButton(_sections[index].letter, _sections[index].color, index),
+          );
+        },
+      ),
+    );
   }
 
   Widget _buildSidebarButton(String text, Color color, int index) {
@@ -374,7 +406,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
             text,
             style: TextStyle(
               fontSize: 24,
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w500,
               color: color,
             ),
           ),

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 class ApiConfig {
@@ -17,7 +16,7 @@ class ChatGPTService {
   // Полностью переработанный метод для корректной обработки SSE (Server-Sent Events)
   static Stream<String> generateTextStream({
     required String prompt,
-    String model = 'gpt-4o',
+    String model = 'gpt-4o-mini',
   }) async* {
     final url = Uri.parse(ApiConfig.baseUrl + _completionsEndpoint);
 
@@ -69,17 +68,17 @@ class ChatGPTService {
       await for (var chunk in response.stream.transform(utf8.decoder)) {
         // Добавляем новый фрагмент к буферу
         buffer += chunk;
-        
+
         // Обрабатываем буфер по строкам SSE
         while (buffer.contains('\n')) {
           final index = buffer.indexOf('\n');
           final line = buffer.substring(0, index);
           buffer = buffer.substring(index + 1);
-          
+
           // Обрабатываем линию SSE
           if (line.startsWith('data: ')) {
             final data = line.substring(6);
-            
+
             // Проверяем признак конца потока
             if (data == '[DONE]') {
               print('=== ПОЛНЫЙ ОТВЕТ БЕЗ ПАРСИНГА ===');
@@ -87,18 +86,18 @@ class ChatGPTService {
               print('=== КОНЕЦ ПОЛНОГО ОТВЕТА ===');
               break;
             }
-            
+
             try {
               final jsonData = jsonDecode(data);
               final choices = jsonData['choices'] as List<dynamic>;
-              
+
               if (choices.isNotEmpty && choices[0]['delta'] != null) {
                 final delta = choices[0]['delta'];
                 if (delta.containsKey('content')) {
                   final content = delta['content'] as String;
                   // Добавляем фрагмент к полному ответу
                   fullResponse += content;
-                  
+
                   // Отправляем накопленный ответ
                   yield fullResponse;
                 }
@@ -129,7 +128,7 @@ class ChatGPTService {
     String genre = 'сказка',
   }) {
     final String prompt;
-    
+
     if (language == 'Кыргыз') {
       prompt = """
 $classLevel-класс окуучулары үчүн кыскача билим берүүчү жомок түзүп бер.
@@ -234,8 +233,9 @@ $classLevel-класс окуучулары үчүн кыскача билим �
     Создай иллюстрацию к детской сказке с названием "$title". 
     Содержание сказки: "$description".
     
+    Изображение должно содержать элементы, персонажи и животные сказки и передавать ее смысл.
     Изображение должно быть ярким, красочным, выполненным в стиле детской иллюстрации.
-    Изображение должно быть подходящим для детей ${language == 'Кыргыз' ? 'в Кыргызстане' : 'в России'}.
+    Изображение должно быть подходящим для детей .
     """;
 
     final body = jsonEncode({
@@ -267,15 +267,15 @@ $classLevel-класс окуучулары үчүн кыскача билим �
       String text, String questionsCount) {
     try {
       final expectedQuestionCount = int.tryParse(questionsCount) ?? 3;
-      
+
       // Выводим полный непарсированный ответ для проверки
       print('=== ТЕКСТ ПЕРЕД НАЧАЛОМ ПАРСИНГА ===');
       print(text);
       print('=== КОНЕЦ ИСХОДНОГО ТЕКСТА ===');
-      
+
       // Разделяем текст на строки, сохраняя переносы строк
       final List<String> lines = text.split('\n');
-      
+
       // Ищем заголовок (первая непустая строка)
       String title = 'Сказка';
       for (var line in lines) {
@@ -284,116 +284,124 @@ $classLevel-класс окуучулары үчүн кыскача билим �
           break;
         }
       }
-      
+
       // Находим начало блока с вопросами
       int questionsStartIndex = -1;
       for (int i = 0; i < lines.length; i++) {
-        if (lines[i].trim().contains('Вопросы:') || 
+        if (lines[i].trim().contains('Вопросы:') ||
             lines[i].trim().contains('Суроолор:')) {
           questionsStartIndex = i;
           break;
         }
       }
-      
+
       // Если блок с вопросами не найден, используем заданную структуру
       if (questionsStartIndex == -1) {
         print('Не удалось найти блок с вопросами в тексте');
         return _getDefaultContent();
       }
-      
+
       // Находим индекс, с которого начинается текст сказки (после заголовка и разделителя)
       int contentStartIndex = 0;
       for (int i = 0; i < lines.length; i++) {
-        if (lines[i].contains('---') || 
-            (i > 0 && lines[i].trim().isEmpty && lines[i-1].trim() == title)) {
+        if (lines[i].contains('---') ||
+            (i > 0 &&
+                lines[i].trim().isEmpty &&
+                lines[i - 1].trim() == title)) {
           contentStartIndex = i + 1;
           break;
         }
       }
-      
+
       // Извлекаем текст сказки, сохраняя форматирование
       final content = lines
           .sublist(contentStartIndex, questionsStartIndex)
           .join('\n')
           .trim();
-      
+
       print('=== ИЗВЛЕЧЕННЫЙ ТЕКСТ СКАЗКИ ===');
       print(content);
       print('=== КОНЕЦ ТЕКСТА СКАЗКИ ===');
-      
+
       // Парсим вопросы и варианты ответов
       final List<Map<String, dynamic>> questions = [];
       int currentLine = questionsStartIndex + 1;
-      
-      while (currentLine < lines.length && questions.length < expectedQuestionCount) {
+
+      while (currentLine < lines.length &&
+          questions.length < expectedQuestionCount) {
         // Пропускаем пустые строки
         if (lines[currentLine].trim().isEmpty) {
           currentLine++;
           continue;
         }
-        
+
         // Проверяем, является ли строка началом вопроса
         final RegExp questionPattern = RegExp(r'^\s*\d+\.\s*(.+)');
         final questionMatch = questionPattern.firstMatch(lines[currentLine]);
-        
+
         if (questionMatch != null) {
           final String questionText = questionMatch.group(1)!.trim();
           final List<String> options = [];
           int optionLine = currentLine + 1;
-          
+
           print('Найден вопрос: $questionText');
-          
+
           // Собираем варианты ответов
           while (optionLine < lines.length && options.length < 4) {
             final String line = lines[optionLine].trim();
             final RegExp optionPattern = RegExp(r'^\s*([A-D])\)\s*(.+)');
             final optionMatch = optionPattern.firstMatch(line);
-            
+
             if (optionMatch != null) {
               final String option = optionMatch.group(2)!.trim();
               options.add(option);
               print('  Вариант ${optionMatch.group(1)}: $option');
             }
-            
+
             optionLine++;
           }
-          
+
           // Дополняем варианты ответов, если их меньше 4
           while (options.length < 4) {
             options.add('Вариант ${String.fromCharCode(65 + options.length)}');
           }
-          
+
           // Ищем указание правильного ответа
           int correctIndex = 0;
-          for (int i = optionLine; i < lines.length && i < optionLine + 3; i++) {
+          for (int i = optionLine;
+              i < lines.length && i < optionLine + 3;
+              i++) {
             if (i >= lines.length) break;
-            
+
             final String line = lines[i].trim();
-            final RegExp correctPattern = RegExp(r'Правильный ответ:\s*([A-D])|Туура жооп:\s*([A-D])');
+            final RegExp correctPattern =
+                RegExp(r'Правильный ответ:\s*([A-D])|Туура жооп:\s*([A-D])');
             final correctMatch = correctPattern.firstMatch(line);
-            
+
             if (correctMatch != null) {
-              final String correctOption = (correctMatch.group(1) ?? correctMatch.group(2))!;
+              final String correctOption =
+                  (correctMatch.group(1) ?? correctMatch.group(2))!;
               correctIndex = 'ABCD'.indexOf(correctOption);
-              print('  Правильный ответ: $correctOption (индекс: $correctIndex)');
+              print(
+                  '  Правильный ответ: $correctOption (индекс: $correctIndex)');
               break;
             }
           }
-          
+
           // Добавляем вопрос в список
           questions.add({
             'question': questionText,
             'options': options,
             'correctIndex': correctIndex
           });
-          
+
           // Переходим к следующему вопросу
           currentLine = optionLine + 3;
         } else {
           currentLine++;
         }
       }
-      
+
       // Если вопросов меньше, чем ожидалось, добавляем стандартные
       while (questions.length < expectedQuestionCount) {
         questions.add({
@@ -402,7 +410,7 @@ $classLevel-класс окуучулары үчүн кыскача билим �
           'correctIndex': 0
         });
       }
-      
+
       // Возвращаем структурированный результат
       return {'title': title, 'content': content, 'questions': questions};
     } catch (e) {

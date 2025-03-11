@@ -1,9 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:table_calendar/table_calendar.dart';
-import 'package:intl/date_symbol_data_local.dart';
-import 'package:intl/intl.dart';
 
-// Класс для хранения информации о разделе
 class Section {
   final String id;
   final String title;
@@ -20,7 +16,7 @@ class Section {
   }) : tasks = tasks ?? [];
 }
 
-// Расширенный класс для хранения задачи
+// Тапшырма сактоо үчүн кеңейтилген класс
 class Task {
   final String id;
   final String title;
@@ -42,7 +38,7 @@ class Task {
     required this.sectionColor,
   });
 
-  // Метод для получения DateTime из строки времени
+  // Убакыт саптан DateTime алуу методу
   DateTime getDateTime() {
     final parts = time.split(':');
     final hour = int.parse(parts[0]);
@@ -58,15 +54,14 @@ class Task {
   }
 }
 
-// Класс для хранения предмета/расписания
+// Предмет/жадыбал элементин сактоо үчүн класс
 class ScheduleItem {
   final String id;
   final String time;
   final String subject;
   final String classInfo;
   final DateTime date;
-  final bool
-      isTask; // Определяет, является ли это задачей или предметом в расписании
+  final bool isTask; // Бул тапшырма же жадыбалдагы предмет экенин аныктайт
 
   ScheduleItem({
     required this.id,
@@ -77,7 +72,7 @@ class ScheduleItem {
     this.isTask = false,
   });
 
-  // Метод для получения DateTime из строки времени
+  // Убакыт саптан DateTime алуу методу
   DateTime getDateTime() {
     final parts = time.split(' - ')[0].split(':');
     final hour = int.parse(parts[0]);
@@ -92,13 +87,13 @@ class ScheduleItem {
     );
   }
 
-  // Статический метод для сортировки по времени
+  // Убакытка жараша сорттоо үчүн статикалык метод
   static List<ScheduleItem> sortByTime(List<ScheduleItem> items) {
     items.sort((a, b) => a.getDateTime().compareTo(b.getDateTime()));
     return items;
   }
 
-  // Конвертация задачи в элемент расписания
+  // Тапшырманы жадыбал элементине айландыруу
   static ScheduleItem fromTask(Task task) {
     return ScheduleItem(
       id: task.id,
@@ -111,8 +106,7 @@ class ScheduleItem {
   }
 }
 
-
-// Страница добавления раздела
+// Бөлүм кошуу баракчасы
 class AddSectionPage extends StatefulWidget {
   final Function(String, String, Color) onSectionAdded;
 
@@ -128,13 +122,26 @@ class AddSectionPage extends StatefulWidget {
 class _AddSectionPageState extends State<AddSectionPage> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _letterController = TextEditingController();
-  Color _selectedColor = Colors.blue;
+  Color _selectedColor = Colors.blue; // Цвет по умолчанию
 
   @override
   void dispose() {
     _titleController.dispose();
     _letterController.dispose();
     super.dispose();
+  }
+
+  // Обновляет букву при любом изменении названия
+  void _updateLetterOnChanged(String text) {
+    if (text.isNotEmpty) {
+      setState(() {
+        _letterController.text = text[0].toUpperCase();
+      });
+    } else {
+      setState(() {
+        _letterController.text = '';
+      });
+    }
   }
 
   @override
@@ -149,9 +156,9 @@ class _AddSectionPageState extends State<AddSectionPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Поле для названия раздела
+                // Бөлүм аты үчүн талаа
                 const Text(
-                  'Название раздела',
+                  'Бөлүмдүн аталышы',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -160,8 +167,10 @@ class _AddSectionPageState extends State<AddSectionPage> {
                 const SizedBox(height: 8),
                 TextField(
                   controller: _titleController,
+                  onChanged:
+                      _updateLetterOnChanged, // Вызываем функцию при каждом изменении
                   decoration: const InputDecoration(
-                    hintText: 'Например: Проекты, Хобби, Спорт...',
+                    hintText: 'Мисалы: Долбоорлор, Хобби, Спорт...',
                     border: OutlineInputBorder(),
                     contentPadding: EdgeInsets.symmetric(
                       horizontal: 16,
@@ -171,37 +180,37 @@ class _AddSectionPageState extends State<AddSectionPage> {
                 ),
                 const SizedBox(height: 24),
 
-                // Поле для буквы (иконки) раздела
-                const Text(
-                  'Буква для иконки',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _letterController,
-                  decoration: const InputDecoration(
-                    hintText: 'Одна буква',
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                  ),
-                  maxLength: 1,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 24),
+                // Тамга (белги) талаасы
+                // const Text(
+                //   'Белги үчүн тамга',
+                //   style: TextStyle(
+                //     fontSize: 16,
+                //     fontWeight: FontWeight.bold,
+                //   ),
+                // ),
+                // const SizedBox(height: 8),
+                // TextField(
+                //   controller: _letterController,
+                //   decoration: const InputDecoration(
+                //     hintText: 'Бир тамга',
+                //     border: OutlineInputBorder(),
+                //     contentPadding: EdgeInsets.symmetric(
+                //       horizontal: 16,
+                //       vertical: 12,
+                //     ),
+                //   ),
+                //   maxLength: 1,
+                //   textAlign: TextAlign.center,
+                //   style: const TextStyle(
+                //     fontSize: 24,
+                //     fontWeight: FontWeight.bold,
+                //   ),
+                // ),
+                // const SizedBox(height: 24),
 
-                // Выбор цвета раздела
-                const Text(
-                  'Цвет раздела',
+                // Бөлүм түсүн тандоо
+                 const Text(
+                  'Бөлүмдүн түсү',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -211,9 +220,9 @@ class _AddSectionPageState extends State<AddSectionPage> {
                 _buildColorPicker(),
                 const SizedBox(height: 32),
 
-                // Предпросмотр иконки раздела
+                // Бөлүм белгисинин алдын ала көрүнүшү
                 const Text(
-                  'Предпросмотр',
+                  'Алдын ала көрүү',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -266,9 +275,9 @@ class _AddSectionPageState extends State<AddSectionPage> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
-            'Добавление нового раздела',
+            'Жаңы бөлүм кошуу',
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
               color: Color(0xFF1C313A),
             ),
@@ -353,7 +362,7 @@ class _AddSectionPageState extends State<AddSectionPage> {
             ),
           ),
           child: const Text(
-            'Добавить раздел',
+            'Бөлүм кошуу',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -374,4 +383,3 @@ class _AddSectionPageState extends State<AddSectionPage> {
     }
   }
 }
-

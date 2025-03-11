@@ -1,10 +1,17 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
+import 'package:client/api_config.dart';
 import 'package:client/screens/questions_screen.dart';
 import 'package:client/widgets/markdown.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter_sound/flutter_sound.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 // Класс для хранения слова, его позиции и состояния в тексте
 class TextWord {
@@ -21,6 +28,189 @@ class TextWord {
     required this.endIndex,
     this.isRead = false,
   });
+}
+
+// Класс для распознавания речи с использованием Whisper API
+class SpeechRecognitionService {
+  static const String _whisperEndpoint = '/audio/transcriptions';
+  static const String _whisperModel = 'whisper-1';
+
+  // Экземпляр рекордера для записи аудио
+  final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
+  String? _audioPath;
+  bool _isRecording = false;
+
+  // Инициализация рекордера
+  // Исправленный метод инициализации рекордера в классе SpeechRecognitionService
+  Future<void> initialize() async {
+    try {
+      // 1. Проверяем текущий статус разрешений
+      print('Проверка статуса разрешения микрофона...');
+      PermissionStatus micPermission = await Permission.microphone.status;
+      print('Текущий статус разрешения микрофона: $micPermission');
+
+      // 2. Если разрешение еще не предоставлено, запрашиваем его
+      if (micPermission != PermissionStatus.granted) {
+        print('Запрашиваем разрешение на использование микрофона...');
+        micPermission = await Permission.microphone.request();
+        print('Новый статус разрешения микрофона: $micPermission');
+      }
+
+      // 3. Если после запроса разрешение не предоставлено, обрабатываем различные случаи
+      if (micPermission != PermissionStatus.granted) {
+        if (micPermission == PermissionStatus.denied) {
+          throw Exception('Пользователь отклонил доступ к микрофону');
+        } else if (micPermission == PermissionStatus.permanentlyDenied) {
+          throw Exception(
+              'Доступ к микрофону запрещен навсегда. Пожалуйста, разрешите в настройках устройства');
+        } else {
+          throw Exception(
+              'Доступ к микрофону не предоставлен (статус: $micPermission)');
+        }
+      }
+
+      // 4. Пробуем получить также разрешение на хранилище (для старых версий Android)
+      print('Запрашиваем разрешение на хранилище...');
+      await Permission.storage.request();
+
+      // 5. Инициализируем рекордер
+      print('Инициализация рекордера...');
+      try {
+        await _recorder.openRecorder();
+        print('Рекордер инициализирован успешно');
+      } catch (e) {
+        if (e.toString().contains('already open')) {
+          print('Рекордер уже был инициализирован');
+        } else {
+          print('Ошибка при открытии рекордера: $e');
+          rethrow;
+        }
+      }
+    } catch (e) {
+      print('Ошибка при инициализации рекордера: $e');
+      throw Exception('Не удалось инициализировать рекордер: $e');
+    }
+  }
+
+// Исправленный метод начала записи
+
+// Исправленный метод начала записи
+  Future<void> startRecording() async {
+    try {
+      // Проверяем, не идет ли уже запись
+      if (_recorder.isRecording) {
+        print('Запись уже идет');
+        return;
+      }
+
+      // Получаем путь к временному файлу
+      final Directory tempDir = await getTemporaryDirectory();
+      _audioPath = '${tempDir.path}/audio_recording.wav';
+      print('Путь для аудиозаписи: $_audioPath');
+
+      // Начинаем запись
+      await _recorder.startRecorder(
+        toFile: _audioPath,
+        codec: Codec.pcm16WAV,
+      );
+
+      _isRecording = true;
+      print('Запись началась');
+    } catch (e) {
+      print('Ошибка при начале записи: $e');
+      throw Exception('Не удалось начать запись: $e');
+    }
+  }
+
+  // Остановить запись и получить транскрипцию
+  Future<String> stopRecordingAndTranscribe() async {
+    try {
+      if (_recorder.isRecording) {
+        print('Останавливаем запись');
+        // Останавливаем запись
+        await _recorder.stopRecorder();
+        _isRecording = false;
+
+        if (_audioPath != null) {
+          // Отправляем аудио в Whisper API
+          print('Отправляем аудиофайл в Whisper API');
+          final transcription = await _sendToWhisperAPI(_audioPath!);
+          return transcription;
+        }
+      }
+      return '';
+    } catch (e) {
+      print('Ошибка при остановке записи и транскрибации: $e');
+      throw Exception('Ошибка при получении транскрипции: $e');
+    }
+  }
+
+  // Освобождение ресурсов
+  Future<void> dispose() async {
+    try {
+      await _recorder.closeRecorder();
+      print('Рекордер освобожден');
+    } catch (e) {
+      print('Ошибка при освобождении рекордера: $e');
+    }
+  }
+
+ Future<String> _sendToWhisperAPI(String audioFilePath) async {
+  try {
+    final url = Uri.parse('${ApiConfig.baseUrl}${_whisperEndpoint}');
+    print('URL для Whisper API: $url');
+
+    // Подготавливаем файл для отправки
+    final file = File(audioFilePath);
+    
+    if (!await file.exists()) {
+      throw Exception('Аудиофайл не существует: $audioFilePath');
+    }
+    
+    // Создаем multipart request
+    final request = http.MultipartRequest('POST', url);
+    
+    // Устанавливаем правильные заголовки для авторизации
+    request.headers['Authorization'] = 'Bearer ${ApiConfig.apiKey}';
+    
+    // Важно: не устанавливаем Content-Type заголовок,
+    // он будет установлен автоматически с правильной границей (boundary)
+
+    // Добавляем файл как multipart параметр
+    request.files.add(await http.MultipartFile.fromPath(
+      'file',  // имя поля должно быть 'file'
+      audioFilePath,
+    ));
+
+    // Добавляем остальные параметры
+    request.fields['model'] = _whisperModel;
+    request.fields['language'] = 'ru';  // или 'ky' для кыргызского
+    request.fields['response_format'] = 'json';  // явно указываем формат ответа
+
+    // Отправляем запрос
+    print('Отправляем запрос на транскрипцию...');
+    final streamedResponse = await request.send();
+    
+    // Получаем ответ
+    final response = await http.Response.fromStream(streamedResponse);
+    print('Статус ответа: ${response.statusCode}');
+    
+    if (response.statusCode == 200) {
+      final jsonResponse = jsonDecode(response.body);
+      final text = jsonResponse['text'] ?? '';
+      print('Распознанный текст: $text');
+      return text;
+    } else {
+      print('Ошибка API: ${response.statusCode}, тело: ${response.body}');
+      throw Exception('Ошибка API при транскрипции: ${response.statusCode}');
+    }
+  } catch (e) {
+    print('Ошибка при отправке аудио в Whisper API: $e');
+    throw Exception('Не удалось распознать речь: $e');
+  }
+}
+  // Геттер для проверки статуса записи
+  bool get isRecording => _isRecording;
 }
 
 class ReadingScreen extends StatefulWidget {
@@ -52,13 +242,90 @@ class _ReadingScreenState extends State<ReadingScreen> {
   // Текущая позиция в списке слов
   final int _currentWordIndex = 0;
 
+  // Добавляем сервис распознавания речи
+  late SpeechRecognitionService _speechService;
+
+  // Состояние проверки
+  bool _isListening = false;
+  String _recognizedText = '';
+
+  // Map для отслеживания прочитанных слов
+  final Map<String, bool> _wordReadStatus = {};
+
   @override
   void initState() {
     super.initState();
+    super.initState();
+
+    // Инициализируем сервис
+    _speechService = SpeechRecognitionService();
+
+    void showPermissionSettingsDialog() {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('Разрешение на доступ к микрофону'),
+            content: const Text(
+              'Для распознавания речи необходимо разрешение на доступ к микрофону. '
+              'Пожалуйста, разрешите доступ в настройках приложения.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Отмена'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  openAppSettings();
+                },
+                child: const Text('Открыть настройки'),
+              ),
+            ],
+          );
+        },
+      );
+    }
+
+    // Инициализируем асинхронно и обрабатываем ошибки
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await _speechService.initialize();
+        print('Сервис распознавания успешно инициализирован');
+      } catch (e) {
+        print('Ошибка при инициализации сервиса распознавания: $e');
+
+        // Если ошибка связана с разрешениями, показываем диалог настроек
+        if (mounted) {
+          if (e.toString().contains('микрофон')) {
+            showPermissionSettingsDialog();
+          } else {
+            // Для других ошибок показываем стандартное сообщение
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Ошибка инициализации: $e'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 5),
+              ),
+            );
+          }
+        }
+      }
+    });
 
     // Подготавливаем слова с их позициями в тексте
     _extractWords();
 
+    // Инициализируем статус прочтения для каждого слова
+    for (final word in _textWords) {
+      _wordReadStatus[word.normalized] = false;
+    }
+
+    // Инициализируем таймер
     _remainingSeconds = widget.timeInSeconds;
 
     if (_remainingSeconds > 0) {
@@ -66,6 +333,7 @@ class _ReadingScreenState extends State<ReadingScreen> {
       _startTimer();
     }
 
+    // Устанавливаем ориентацию экрана
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
@@ -102,6 +370,7 @@ class _ReadingScreenState extends State<ReadingScreen> {
       _timer.cancel();
     }
 
+    _speechService.dispose();
     super.dispose();
   }
 
@@ -139,7 +408,100 @@ class _ReadingScreenState extends State<ReadingScreen> {
     return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 
-  // Метод для создания подсвеченного текста
+// В методе _startListening класса _ReadingScreenState тоже убираем проверку isInitialized
+  void _startListening() async {
+    if (!_isListening) {
+      setState(() {
+        _isListening = true;
+        _recognizedText = 'Слушаю...';
+      });
+
+      try {
+        // Просто начинаем запись, внутри метода уже есть все проверки
+        await _speechService.startRecording();
+      } catch (e) {
+        setState(() {
+          _isListening = false;
+          _recognizedText = 'Ошибка при начале записи: $e';
+        });
+
+        // Показываем ошибку пользователю
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка микрофона: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Остановить слушание и проверить прочитанное
+  void _stopListeningAndCheckReading() async {
+    if (_isListening) {
+      setState(() {
+        _isListening = false;
+        _recognizedText = 'Обработка...';
+      });
+
+      try {
+        // Получаем текст из аудио
+        final transcription = await _speechService.stopRecordingAndTranscribe();
+
+        setState(() {
+          _recognizedText = transcription;
+        });
+
+        // Проверяем произнесенные слова
+        _checkReadWords(transcription);
+      } catch (e) {
+        setState(() {
+          _recognizedText = 'Ошибка распознавания: $e';
+        });
+      }
+    }
+  }
+
+  // Проверяем, какие слова были прочитаны правильно
+  void _checkReadWords(String recognizedText) {
+    // Нормализуем и разбиваем распознанный текст на слова
+    final normalizedRecognized = recognizedText.toLowerCase();
+    final recognizedWords = _extractWordsFromString(normalizedRecognized);
+
+    // Помечаем слова как прочитанные
+    int readWordsCount = 0;
+    for (final textWord in _textWords) {
+      if (recognizedWords.contains(textWord.normalized)) {
+        setState(() {
+          textWord.isRead = true;
+          _wordReadStatus[textWord.normalized] = true;
+          readWordsCount++;
+        });
+      }
+    }
+
+    // Обновляем UI с новым статусом слов и показываем результат
+    setState(() {
+      _recognizedText =
+          '$_recognizedText\n\nРаспознано $readWordsCount из ${_textWords.length} слов';
+    });
+  }
+
+  // Вспомогательный метод для извлечения слов из строки
+  Set<String> _extractWordsFromString(String text) {
+    final Set<String> words = {};
+    final RegExp wordRegExp = RegExp(r'\b[а-яА-Яa-zA-Z0-9]+\b');
+
+    final Iterable<RegExpMatch> matches = wordRegExp.allMatches(text);
+    for (final match in matches) {
+      final String word = text.substring(match.start, match.end).toLowerCase();
+      words.add(word);
+    }
+
+    return words;
+  }
+
+  // Метод для создания подсвеченного текста с отметкой о прочитанных словах
   Widget _buildHighlightedText() {
     final String text = widget.content;
     List<InlineSpan> spans = [];
@@ -156,7 +518,7 @@ class _ReadingScreenState extends State<ReadingScreen> {
           TextSpan(
             text: text.substring(lastEnd, word.startIndex),
             style: const TextStyle(
-              fontSize: 18,
+              fontSize: 30,
               color: Colors.black,
             ),
           ),
@@ -168,8 +530,8 @@ class _ReadingScreenState extends State<ReadingScreen> {
         TextSpan(
           text: word.word,
           style: TextStyle(
-            fontSize: 18,
-            color: word.isRead ? Colors.grey : Colors.black,
+            fontSize: 30,
+            color: word.isRead ? Colors.green : Colors.black,
             fontWeight:
                 (i == _currentWordIndex) ? FontWeight.bold : FontWeight.normal,
             decoration: (i == _currentWordIndex)
@@ -188,7 +550,7 @@ class _ReadingScreenState extends State<ReadingScreen> {
         TextSpan(
           text: text.substring(lastEnd),
           style: const TextStyle(
-            fontSize: 18,
+            fontSize: 30,
             color: Colors.black,
           ),
         ),
@@ -213,7 +575,8 @@ class _ReadingScreenState extends State<ReadingScreen> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             decoration: BoxDecoration(
-              color: _timerActive ? const Color(0xffBA0F43) : Colors.transparent,
+              color:
+                  _timerActive ? const Color(0xffBA0F43) : Colors.transparent,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
@@ -232,27 +595,68 @@ class _ReadingScreenState extends State<ReadingScreen> {
         ),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Подсвеченный текст вместо обычного текста
-                Text(
-                  widget.content,
-                  style: GoogleFonts.montserrat(fontSize: 30),
+        child: Column(
+          children: [
+            // Область для текста
+            Expanded(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Используем подсвеченный текст вместо обычного
+                      _buildHighlightedText(),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
+              ),
+            ),
+
+            // Область распознанного текста
+            if (_recognizedText.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.all(16),
+                color: Colors.grey[200],
+                width: double.infinity,
+                child: Text(
+                  _recognizedText,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ),
+
+            // Панель управления с кнопками
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  // Кнопка слушать/стоп
+                  ElevatedButton.icon(
+                    onPressed: _isListening
+                        ? _stopListeningAndCheckReading
+                        : _startListening,
+                    icon: Icon(_isListening ? Icons.stop : Icons.mic),
+                    label: Text(_isListening ? 'Стоп' : 'Слушать'),
+                    style: ElevatedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      backgroundColor:
+                          _isListening ? Colors.red : const Color(0xFF1B383A),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                    ),
+                  ),
+
+                  // Кнопка финиш (существующая)
+                  ElevatedButton(
                     onPressed: () {
                       if (_timerActive) {
                         _timer.cancel();
                         _timerActive = false;
                       }
-
                       _navigateToQuestions();
                     },
                     style: ElevatedButton.styleFrom(
@@ -271,10 +675,10 @@ class _ReadingScreenState extends State<ReadingScreen> {
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );

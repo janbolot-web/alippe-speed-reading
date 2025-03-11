@@ -26,6 +26,7 @@ class FamilyPage extends StatelessWidget {
           const Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              
               Text(
                 'ТАПШЫРМАЛАРЫМ',
                 style: TextStyle(

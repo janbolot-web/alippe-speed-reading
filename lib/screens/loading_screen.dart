@@ -205,7 +205,7 @@ class _LoadingScreenState extends State<LoadingScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       body: _isLoading
-          ? SafeArea(child:_buildLoadingView())
+          ? SafeArea(child: _buildLoadingView())
           : _hasError
               ? _buildErrorView()
               : SafeArea(child: _buildContentView()),
@@ -320,33 +320,27 @@ class _LoadingScreenState extends State<LoadingScreen> {
                   color: const Color(0xFF1B383A),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: _imageUrl.startsWith('http')
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.network(
-                          _imageUrl,
-                          fit: BoxFit.cover,
-                          loadingBuilder: (context, child, loadingProgress) {
-                            if (loadingProgress == null) return child;
-                            return Center(
-                              child: CircularProgressIndicator(
-                                value: loadingProgress.expectedTotalBytes !=
-                                        null
-                                    ? loadingProgress.cumulativeBytesLoaded /
-                                        loadingProgress.expectedTotalBytes!
-                                    : null,
-                                valueColor:
-                                    const AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            );
-                          },
-                          errorBuilder: (context, error, stackTrace) {
-                            print("Ошибка загрузки изображения: $error");
-                            return _buildDefaultImage();
-                          },
-                        ),
-                      )
-                    : _buildDefaultImage(), // Если изображение не сгенерировано, показываем заглушку
+                child: _imageUrl.isEmpty
+                    ? _buildImageSkeleton() // Показываем скелетон во время загрузки
+                    : _imageUrl.startsWith('http')
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Image.network(
+                              _imageUrl,
+                              fit: BoxFit.cover,
+                              loadingBuilder:
+                                  (context, child, loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return _buildImageLoadingIndicator(
+                                    loadingProgress);
+                              },
+                              errorBuilder: (context, error, stackTrace) {
+                                print("Ошибка загрузки изображения: $error");
+                                return _buildDefaultImage();
+                              },
+                            ),
+                          )
+                        : _buildDefaultImage(),
               ),
             ),
             const SizedBox(height: 20),
@@ -544,18 +538,31 @@ class _LoadingScreenState extends State<LoadingScreen> {
   Future<void> _generateImage() async {
     try {
       setState(() {
-        _imageUrl =
-            "https://files.oaiusercontent.com/file-3DZAPtExXGwfznhftXmzgP?se=2025-02-26T09%3A25%3A36Z&sp=r&sv=2024-08-04&sr=b&rscc=max-age%3D604800%2C%20immutable%2C%20private&rscd=attachment%3B%20filename%3D096b1517-1616-4773-bd77-c86fc9650a6c.webp&sig=AX8G2aM5pCiEhfi4XkxwIUOO9SBvfoRN1toBmcbSK74%3D"; // Пустая строка, пока изображение генерируется
+        _imageUrl = ""; // Пустая строка, показываем анимированный лоадинг
       });
 
-      // final imageUrl = await _generateOrUseLocalImage();
+      // // Генерируем изображение через API
+      // final imageUrl = await ChatGPTService.generateImage(
+      //   title: _title,
+      //   content: _content,
+      //   language: widget.language,
+      // );
 
       // setState(() {
       //   _imageUrl = imageUrl;
       // });
     } catch (e) {
       print('Ошибка при генерации изображения: $e');
-      // Не показываем ошибку пользователю, просто оставляем поле пустым
+      setState(() {
+        _imageUrl = ""; // Показать анимацию загрузки еще на 2 секунды
+      });
+
+      // Имитация задержки перед показом ошибки
+      await Future.delayed(const Duration(seconds: 2));
+
+      setState(() {
+        _imageUrl = "error"; // Любое значение, которое не начинается с http
+      });
     }
   }
 
@@ -579,4 +586,222 @@ class _LoadingScreenState extends State<LoadingScreen> {
       ),
     );
   }
+
+  // Замените _buildImageSkeleton на этот метод с красивой анимацией
+
+  Widget _buildImageSkeleton() {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        color: const Color(0xFF1B383A),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Красивая анимация загрузки
+            SizedBox(
+              width: 100,
+              height: 100,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Внешний вращающийся круг
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0, end: 2 * 3.14159),
+                    duration: const Duration(seconds: 2),
+                    builder: (context, value, child) {
+                      return Transform.rotate(
+                        angle: value,
+                        child: child,
+                      );
+                    },
+                    onEnd: () {
+                      setState(() {});
+                    },
+                    child: Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.5),
+                          width: 4,
+                          strokeAlign: BorderSide.strokeAlignOutside,
+                        ),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF9EAFB2), Colors.transparent],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // Внутренний пульсирующий круг
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0.7, end: 1.0),
+                    duration: const Duration(milliseconds: 800),
+                    builder: (context, value, child) {
+                      return Transform.scale(
+                        scale: value,
+                        child: child,
+                      );
+                    },
+                    onEnd: () {
+                      setState(() {});
+                    },
+                    child: Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFF1B383A),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.3),
+                            blurRadius: 10,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: Icon(
+                          Icons.image,
+                          color: Colors.white.withOpacity(0.7),
+                          size: 24,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Бегущие точки для индикации загрузки
+            SizedBox(
+              width: 60,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: List.generate(3, (index) {
+                  return TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0.3, end: 1.0),
+                    duration: const Duration(milliseconds: 600),
+                    curve: Curves.easeInOut,
+                    builder: (context, value, child) {
+                      return Opacity(
+                        opacity: value,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      );
+                    },
+                    onEnd: () {
+                      // Запускаем заново с задержкой для каждой точки
+                      if (index == 2) {
+                        setState(() {});
+                      }
+                    },
+                  );
+                }),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            Text(
+              widget.language == 'Кыргыз'
+                  ? 'Сүрөт түзүлүүдө...'
+                  : 'Создание изображения...',
+              style: GoogleFonts.montserrat(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: Colors.white.withOpacity(0.8),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+// Улучшенный индикатор загрузки
+  Widget _buildImageLoadingIndicator(ImageChunkEvent loadingProgress) {
+    // Вычисляем прогресс загрузки
+    final double progress = loadingProgress.expectedTotalBytes != null
+        ? loadingProgress.cumulativeBytesLoaded /
+            loadingProgress.expectedTotalBytes!
+        : 0.0;
+
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Кастомный индикатор прогресса
+          Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF1B383A),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 10,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Круговой прогресс
+                CircularProgressIndicator(
+                  value: loadingProgress.expectedTotalBytes != null
+                      ? progress
+                      : null,
+                  valueColor:
+                      const AlwaysStoppedAnimation<Color>(Color(0xFF9EAFB2)),
+                  strokeWidth: 6,
+                ),
+
+                // Процент загрузки
+                if (loadingProgress.expectedTotalBytes != null)
+                  Text(
+                    '${(progress * 100).toInt()}%',
+                    style: GoogleFonts.montserrat(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          Text(
+            widget.language == 'Кыргыз'
+                ? 'Сүрөт жүктөлүүдө...'
+                : 'Загрузка изображения...',
+            style: GoogleFonts.montserrat(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              color: Colors.white.withOpacity(0.8),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+// Также не забудьте обновить метод _generateImage:
 }
